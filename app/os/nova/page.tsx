@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
+  AlertTriangle,
   ArrowLeft,
   BookOpen,
   Check,
@@ -9,15 +10,19 @@ import {
   FileText,
   FolderOpen,
   Link as LinkIcon,
+  Loader2,
   Plus,
   Save,
   Timer,
   UserRound,
 } from "lucide-react";
 import { supabase } from "../../../lib/supabase";
+import { useAuth } from "../../contexts/AuthContext";
 import SystemModal from "../../components/SystemModal";
 
 export default function NovaOS() {
+  const { user, profile } = useAuth();
+
   const [teachers, setTeachers] = useState<any[]>([]);
   const [subjects, setSubjects] = useState<any[]>([]);
 
@@ -29,6 +34,9 @@ export default function NovaOS() {
 
   const [showNewTeacher, setShowNewTeacher] = useState(false);
   const [showNewSubject, setShowNewSubject] = useState(false);
+
+  const [isCreating, setIsCreating] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<string[]>([]);
 
   const [form, setForm] = useState({
     file_count: "",
@@ -97,7 +105,13 @@ export default function NovaOS() {
   }
 
   function handleChange(e: any) {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+
+    setForm({ ...form, [name]: value });
+
+    if (fieldErrors.includes(name)) {
+      setFieldErrors((current) => current.filter((field) => field !== name));
+    }
   }
 
   function tempoParaMinutos(tempo: string) {
@@ -116,6 +130,67 @@ export default function NovaOS() {
     }
 
     return 0;
+  }
+
+  function getUserName() {
+    return profile?.name || user?.email || "Usuário";
+  }
+
+  function isAdmin() {
+    return profile?.role === "admin";
+  }
+
+  function getInputClass(fieldName: string) {
+    if (!fieldErrors.includes(fieldName)) return inputClass;
+
+    return `${inputClass} border-red-300 bg-red-50/60 text-red-900 focus:border-red-400 focus:ring-red-100`;
+  }
+
+  function getTextAreaClass(fieldName: string) {
+    const baseClass =
+      "min-h-32 w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-orange-400 focus:ring-4 focus:ring-orange-100";
+
+    if (!fieldErrors.includes(fieldName)) return baseClass;
+
+    return `${baseClass} border-red-300 bg-red-50/60 text-red-900 focus:border-red-400 focus:ring-red-100`;
+  }
+
+  function validarCamposObrigatorios() {
+    if (isAdmin()) {
+      setFieldErrors([]);
+      return true;
+    }
+
+    const erros: string[] = [];
+
+    if (!selectedTeacherId) erros.push("teacher_id");
+    if (!selectedSubjectId) erros.push("subject_id");
+    if (!form.drive_link.trim()) erros.push("drive_link");
+    if (!form.file_count || Number(form.file_count) <= 0) erros.push("file_count");
+    if (!form.total_video_time.trim()) erros.push("total_video_time");
+
+    setFieldErrors(erros);
+
+    if (erros.length === 0) return true;
+
+    const labels: Record<string, string> = {
+      teacher_id: "professor",
+      subject_id: "disciplina",
+      drive_link: "link do Drive",
+      file_count: "quantidade de arquivos",
+      total_video_time: "tempo total",
+    };
+
+    const lista = erros.map((erro) => labels[erro]).join(", ");
+
+    abrirModal({
+      title: "Campos obrigatórios pendentes",
+      message: `Para criar a OS, informe: ${lista}. Os campos pendentes foram destacados no formulário.`,
+      type: "warning",
+      confirmText: "Vou corrigir",
+    });
+
+    return false;
   }
 
   async function criarProfessor() {
@@ -207,6 +282,8 @@ export default function NovaOS() {
   function solicitarCriarOS(e: any) {
     e.preventDefault();
 
+    if (!validarCamposObrigatorios()) return;
+
     abrirModal({
       title: "Criar nova OS?",
       message: "Tem certeza que deseja criar esta ordem de serviço?",
@@ -223,6 +300,16 @@ export default function NovaOS() {
   }
 
   async function criarOS() {
+    if (!user) {
+      abrirModal({
+        title: "Usuário não identificado",
+        message: "Faça login novamente para criar uma OS.",
+        type: "error",
+        confirmText: "Entendi",
+      });
+      return;
+    }
+
     const selectedTeacher = teachers.find(
       (teacher) => String(teacher.id) === String(selectedTeacherId)
     );
@@ -231,7 +318,7 @@ export default function NovaOS() {
       (subject) => String(subject.id) === String(selectedSubjectId)
     );
 
-    if (!selectedTeacher) {
+    if (!isAdmin() && !selectedTeacher) {
       abrirModal({
         title: "Professor obrigatório",
         message: "Selecione um professor.",
@@ -241,7 +328,7 @@ export default function NovaOS() {
       return;
     }
 
-    if (!selectedSubject) {
+    if (!isAdmin() && !selectedSubject) {
       abrirModal({
         title: "Disciplina obrigatória",
         message: "Selecione uma disciplina.",
@@ -250,6 +337,8 @@ export default function NovaOS() {
       });
       return;
     }
+
+    setIsCreating(true);
 
     const { data: ultimaOS } = await supabase
       .from("service_orders")
@@ -265,81 +354,139 @@ export default function NovaOS() {
     }
 
     const osNumber = `OAB-${String(novoNumero).padStart(4, "0")}`;
+    const userName = getUserName();
+    const fileCount = form.file_count ? Number(form.file_count) : 0;
+    const totalVideoTime = form.total_video_time.trim();
+    const driveLink = form.drive_link.trim();
 
-    const { error } = await supabase.from("service_orders").insert([
-      {
-        os_number: osNumber,
-        teacher_id: selectedTeacher.id,
-        subject_id: selectedSubject.id,
-        professor_name: selectedTeacher.name,
-        subject_name: selectedSubject.name,
-        file_count: Number(form.file_count),
-        drive_link: form.drive_link,
-        notes: form.notes,
-        total_video_time: form.total_video_time,
-        total_video_minutes: tempoParaMinutos(form.total_video_time),
-        status: "pendente",
-      },
-    ]);
+    const { data: createdOS, error } = await supabase
+      .from("service_orders")
+      .insert([
+        {
+          os_number: osNumber,
+          teacher_id: selectedTeacher?.id || null,
+          subject_id: selectedSubject?.id || null,
+          professor_name: selectedTeacher?.name || "Não informado",
+          subject_name: selectedSubject?.name || "Não informado",
+          file_count: fileCount,
+          drive_link: driveLink,
+          notes: form.notes,
+          total_video_time: totalVideoTime,
+          total_video_minutes: tempoParaMinutos(totalVideoTime),
+          status: "pendente",
+          email_status: "pending",
+          operator_id: user.id,
+          operator_name: userName,
+        },
+      ])
+      .select("id, os_number")
+      .single();
 
     if (error) {
+      setIsCreating(false);
+
       abrirModal({
         title: "Erro",
-        message: "Não foi possível criar a OS.",
+        message: error.message || "Não foi possível criar a OS.",
         type: "error",
         confirmText: "Entendi",
       });
       return;
     }
 
+    await supabase.from("service_order_history").insert([
+      {
+        service_order_id: createdOS.id,
+        user_id: user.id,
+        user_name: userName,
+        action: "created",
+        description: `OS ${osNumber} criada por ${userName}.`,
+      },
+    ]);
+
+    enviarEmailDaOS(createdOS.id);
+
+    setIsCreating(false);
+
     abrirModal({
       title: "OS criada",
-      message: `OS criada com sucesso: ${osNumber}`,
+      message: `OS criada com sucesso: ${osNumber}. O envio do e-mail foi iniciado em segundo plano.`,
       type: "success",
       confirmText: "Ver OS",
       onConfirm: () => {
-        window.location.href = "/os";
+        window.location.href = `/os/${createdOS.id}`;
       },
     });
   }
 
+  async function enviarEmailDaOS(osId: string) {
+    try {
+      const emailResponse = await fetch("/api/os/send-email", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ osId }),
+      });
+
+      let emailResult: any = null;
+
+      try {
+        emailResult = await emailResponse.json();
+      } catch {
+        emailResult = null;
+      }
+
+      if (!emailResponse.ok) {
+        console.error("Erro ao enviar e-mail da OS:", emailResult);
+      }
+    } catch (err) {
+      console.error("Erro inesperado no envio de e-mail da OS:", err);
+    }
+  }
+
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,#eff6ff_0,#f8fafc_34%,#eef2f7_100%)] px-4 py-8 md:px-8">
-      <section className="mx-auto max-w-5xl">
-        <header className="mb-7 flex flex-col justify-between gap-4 md:flex-row md:items-end">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.24em] text-blue-600">
-              EstudoTOP OS
-            </p>
+    <main className="min-h-screen bg-[#e9e9ec] px-4 py-7 md:px-8">
+      <section className="mx-auto max-w-7xl">
+        <header className="relative overflow-hidden rounded-[2rem] border border-white/70 bg-gradient-to-r from-white via-white to-orange-50 p-8 shadow-sm ring-1 ring-slate-200/60">
+          <div className="absolute right-0 top-0 h-40 w-40 translate-x-14 -translate-y-16 rounded-full bg-orange-500/10 blur-2xl" />
+          <div className="absolute bottom-0 right-32 h-32 w-32 translate-y-16 rounded-full bg-amber-400/10 blur-2xl" />
 
-            <h1 className="mt-3 text-4xl font-medium tracking-tight text-slate-950">
-              Nova OS
-            </h1>
+          <div className="relative flex flex-col justify-between gap-5 md:flex-row md:items-center">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.26em] text-orange-500">
+                EstudoTOP OS
+              </p>
 
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500">
-              Registre um novo envio de vídeos para edição e acompanhamento da
-              produção.
-            </p>
+              <h1 className="mt-3 text-4xl font-medium tracking-tight text-slate-950">
+                Nova OS
+              </h1>
+
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500">
+                Registre um novo envio de vídeos para edição e acompanhamento
+                da produção.
+              </p>
+            </div>
+
+            <a
+              href="/os"
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-sm transition hover:border-orange-200 hover:bg-orange-50"
+            >
+              <ArrowLeft size={17} />
+              Voltar para lista
+            </a>
           </div>
-
-          <a
-            href="/os"
-            className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
-          >
-            <ArrowLeft size={17} />
-            Voltar para lista
-          </a>
         </header>
 
         <form
           onSubmit={solicitarCriarOS}
-          className="overflow-hidden rounded-[2rem] border border-white/80 bg-white shadow-sm ring-1 ring-slate-200/70"
+          className="mt-7 overflow-hidden rounded-[2rem] border border-white/70 bg-white/90 shadow-sm ring-1 ring-slate-200/60 backdrop-blur"
         >
-          <div className="relative border-b border-slate-100 bg-white p-7">
-            <div className="absolute right-0 top-0 h-36 w-36 translate-x-12 -translate-y-14 rounded-full bg-blue-500/10 blur-2xl" />
+          <div className="relative border-b border-slate-100 bg-gradient-to-r from-white via-white to-orange-50/70 p-7">
+            <div className="absolute right-0 top-0 h-36 w-36 translate-x-12 -translate-y-14 rounded-full bg-orange-500/10 blur-2xl" />
 
             <div className="relative flex items-center gap-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/20">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-500 text-white shadow-lg shadow-orange-500/20">
                 <ClipboardList size={25} />
               </div>
 
@@ -354,6 +501,44 @@ export default function NovaOS() {
             </div>
           </div>
 
+          {fieldErrors.length > 0 && !isAdmin() && (
+            <div className="mx-7 mt-7 rounded-[1.5rem] border border-red-200 bg-gradient-to-r from-red-50 via-white to-orange-50 p-5 shadow-sm ring-1 ring-red-100/70">
+              <div className="flex gap-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-red-500 text-white shadow-lg shadow-red-500/20">
+                  <AlertTriangle size={20} />
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-950">
+                    Antes de criar a OS, complete os campos obrigatórios.
+                  </h3>
+                  <p className="mt-1 text-sm leading-6 text-slate-600">
+                    Professor, disciplina, link do Drive, quantidade de arquivos e tempo total são obrigatórios para operadores. Os campos pendentes estão destacados abaixo.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {isAdmin() && (
+            <div className="mx-7 mt-7 rounded-[1.5rem] border border-amber-200 bg-gradient-to-r from-amber-50 via-white to-orange-50 p-5 shadow-sm ring-1 ring-amber-100/70">
+              <div className="flex gap-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-orange-500 text-white shadow-lg shadow-orange-500/20">
+                  <AlertTriangle size={20} />
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-950">
+                    Modo administrador ativo
+                  </h3>
+                  <p className="mt-1 text-sm leading-6 text-slate-600">
+                    Administradores podem criar OS mesmo com campos incompletos. Para operadores, os campos essenciais continuam obrigatórios.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 gap-6 p-7 lg:grid-cols-2">
             <Field label="Professor" icon={<UserRound size={17} />}>
               <select
@@ -367,8 +552,9 @@ export default function NovaOS() {
 
                   setSelectedTeacherId(e.target.value);
                   setShowNewTeacher(false);
+                  setFieldErrors((current) => current.filter((field) => field !== "teacher_id"));
                 }}
-                className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                className={getInputClass("teacher_id")}
               >
                 <option value="">Selecione um professor</option>
                 {teachers.map((teacher) => (
@@ -386,7 +572,6 @@ export default function NovaOS() {
                   onChange={setNewTeacherName}
                   placeholder="Nome do novo professor"
                   onSave={criarProfessor}
-                  color="blue"
                 />
               )}
             </Field>
@@ -403,8 +588,9 @@ export default function NovaOS() {
 
                   setSelectedSubjectId(e.target.value);
                   setShowNewSubject(false);
+                  setFieldErrors((current) => current.filter((field) => field !== "subject_id"));
                 }}
-                className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-700 outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                className={getInputClass("subject_id")}
               >
                 <option value="">Selecione uma disciplina</option>
                 {subjects.map((subject) => (
@@ -422,7 +608,6 @@ export default function NovaOS() {
                   onChange={setNewSubjectName}
                   placeholder="Nome da nova disciplina"
                   onSave={criarDisciplina}
-                  color="violet"
                 />
               )}
             </Field>
@@ -434,8 +619,7 @@ export default function NovaOS() {
                 placeholder="Ex.: 12"
                 value={form.file_count}
                 onChange={handleChange}
-                className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
-                required
+                className={getInputClass("file_count")}
               />
             </Field>
 
@@ -445,7 +629,7 @@ export default function NovaOS() {
                 placeholder="Ex.: 02:35 ou 01:20:30"
                 value={form.total_video_time}
                 onChange={handleChange}
-                className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                className={getInputClass("total_video_time")}
               />
             </Field>
 
@@ -456,7 +640,7 @@ export default function NovaOS() {
                   placeholder="Cole aqui o link da pasta ou dos arquivos"
                   value={form.drive_link}
                   onChange={handleChange}
-                  className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                  className={getInputClass("drive_link")}
                 />
               </Field>
             </div>
@@ -468,7 +652,7 @@ export default function NovaOS() {
                   placeholder="Inclua orientações importantes para a edição."
                   value={form.notes}
                   onChange={handleChange}
-                  className="min-h-32 w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
+                  className={getTextAreaClass("notes")}
                 />
               </Field>
             </div>
@@ -482,19 +666,50 @@ export default function NovaOS() {
 
             <button
               type="submit"
-              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 px-6 py-3 text-sm font-medium text-white shadow-lg shadow-blue-500/20 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-500/25"
+              disabled={isCreating}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-orange-500 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-orange-500/20 transition hover:-translate-y-0.5 hover:bg-orange-600 hover:shadow-xl hover:shadow-orange-500/25 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0"
             >
-              <Save size={18} />
-              Criar OS
+              {isCreating ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  Criando OS...
+                </>
+              ) : (
+                <>
+                  <Save size={18} />
+                  Criar OS
+                </>
+              )}
             </button>
           </div>
         </form>
       </section>
 
+      {isCreating && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/35 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-[2rem] border border-white/70 bg-white p-7 text-center shadow-2xl ring-1 ring-slate-200/60">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-orange-500 text-white shadow-lg shadow-orange-500/25">
+              <Loader2 size={28} className="animate-spin" />
+            </div>
+
+            <h2 className="mt-5 text-xl font-semibold tracking-tight text-slate-950">
+              Criando OS...
+            </h2>
+
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Estamos registrando a ordem de serviço e iniciando o envio do e-mail.
+            </p>
+          </div>
+        </div>
+      )}
+
       <SystemModal {...modal} />
     </main>
   );
 }
+
+const inputClass =
+  "h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-orange-400 focus:ring-4 focus:ring-orange-100";
 
 function Field({
   label,
@@ -502,8 +717,8 @@ function Field({
   children,
 }: {
   label: string;
-  icon: React.ReactNode;
-  children: React.ReactNode;
+  icon: ReactNode;
+  children: ReactNode;
 }) {
   return (
     <div>
@@ -523,33 +738,16 @@ function InlineCreate({
   onChange,
   placeholder,
   onSave,
-  color,
 }: {
   title: string;
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
   onSave: () => void;
-  color: "blue" | "violet";
 }) {
-  const styles =
-    color === "blue"
-      ? {
-          box: "border-blue-200 bg-blue-50/70",
-          text: "text-blue-700",
-          button: "from-blue-600 to-indigo-600 shadow-blue-500/20",
-          focus: "focus:border-blue-400 focus:ring-blue-100",
-        }
-      : {
-          box: "border-violet-200 bg-violet-50/70",
-          text: "text-violet-700",
-          button: "from-violet-600 to-fuchsia-600 shadow-violet-500/20",
-          focus: "focus:border-violet-400 focus:ring-violet-100",
-        };
-
   return (
-    <div className={`mt-4 rounded-2xl border p-4 ${styles.box}`}>
-      <p className={`mb-3 flex items-center gap-2 text-sm font-medium ${styles.text}`}>
+    <div className="mt-4 rounded-2xl border border-orange-200 bg-orange-50/70 p-4">
+      <p className="mb-3 flex items-center gap-2 text-sm font-medium text-orange-700">
         <Plus size={16} />
         {title}
       </p>
@@ -559,13 +757,13 @@ function InlineCreate({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          className={`h-11 flex-1 rounded-xl border border-white bg-white px-4 text-sm outline-none transition focus:ring-4 ${styles.focus}`}
+          className="h-11 flex-1 rounded-xl border border-white bg-white px-4 text-sm outline-none transition focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
         />
 
         <button
           type="button"
           onClick={onSave}
-          className={`inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-br px-4 text-sm font-medium text-white shadow-lg transition hover:-translate-y-0.5 ${styles.button}`}
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 text-sm font-medium text-white shadow-lg shadow-orange-500/20 transition hover:-translate-y-0.5 hover:bg-orange-600"
         >
           <Check size={16} />
           Salvar

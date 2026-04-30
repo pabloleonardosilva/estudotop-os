@@ -1,34 +1,114 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
-  Search,
-  Plus,
+  AlertCircle,
   CalendarDays,
-  FileVideo,
-  Clock,
+  CheckCircle2,
   ClipboardList,
+  Clock,
+  FileVideo,
+  Loader2,
+  Mail,
+  Plus,
   RotateCcw,
+  Search,
+  Trash2,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
+import { useAuth } from "../contexts/AuthContext";
+import SystemModal from "../components/SystemModal";
+import PageBackground from "../components/ui/PageBackground";
+import PageHeader from "../components/ui/PageHeader";
+import PremiumButton from "../components/ui/PremiumButton";
+import PremiumCard from "../components/ui/PremiumCard";
+import PremiumSelect from "../components/ui/PremiumSelect";
+import PremiumLoadingOverlay from "../components/ui/PremiumLoadingOverlay";
+import {
+  PremiumTable,
+  PremiumTableBody,
+  PremiumTableCell,
+  PremiumTableHead,
+  PremiumTableHeader,
+  PremiumTableRow,
+} from "../components/ui/PremiumTable";
 
 export default function ConsultarOS() {
+  const { user, profile } = useAuth();
+  const isAdmin = profile?.role === "admin";
+  const isOperator = profile?.role === "operator";
+  const showActions = isAdmin || isOperator;
+
   const [osList, setOsList] = useState<any[]>([]);
   const [teachers, setTeachers] = useState<any[]>([]);
   const [subjects, setSubjects] = useState<any[]>([]);
+  const [loadingList, setLoadingList] = useState(true);
 
   const [filtroStatus, setFiltroStatus] = useState("");
   const [filtroProfessor, setFiltroProfessor] = useState("");
   const [filtroDisciplina, setFiltroDisciplina] = useState("");
-
   const [filtroPeriodo, setFiltroPeriodo] = useState("");
   const [dataInicial, setDataInicial] = useState("");
   const [dataFinal, setDataFinal] = useState("");
 
+  const [modal, setModal] = useState<any>({
+    open: false,
+    title: "",
+    message: "",
+    type: "info",
+    showCancel: false,
+    confirmText: "Confirmar",
+    cancelText: "Cancelar",
+    onConfirm: null,
+    onCancel: null,
+  });
+
+  useEffect(() => {
+    buscarOS();
+    buscarFiltros();
+  }, [filtroStatus, filtroProfessor, filtroDisciplina, filtroPeriodo, dataInicial, dataFinal]);
+
+  function fecharModal() {
+    setModal({
+      open: false,
+      title: "",
+      message: "",
+      type: "info",
+      showCancel: false,
+      confirmText: "Confirmar",
+      cancelText: "Cancelar",
+      onConfirm: null,
+      onCancel: null,
+    });
+  }
+
+  function abrirModal(config: any) {
+    setModal({
+      open: true,
+      title: config.title || "",
+      message: config.message || "",
+      type: config.type || "info",
+      showCancel: config.showCancel || false,
+      confirmText: config.confirmText || "Confirmar",
+      cancelText: config.cancelText || "Cancelar",
+      onConfirm: config.onConfirm || fecharModal,
+      onCancel: config.onCancel || fecharModal,
+    });
+  }
+
   async function buscarOS() {
+    setLoadingList(true);
+
     let query = supabase
       .from("service_orders")
-      .select("*")
+      .select(
+        `
+        *,
+        teachers:teacher_id (id, name),
+        subjects:subject_id (id, name)
+      `
+      )
       .order("created_at", { ascending: false });
 
     if (filtroStatus) query = query.eq("status", filtroStatus);
@@ -40,88 +120,58 @@ export default function ConsultarOS() {
     if (filtroPeriodo === "hoje") {
       const inicio = new Date();
       inicio.setHours(0, 0, 0, 0);
-
       const fim = new Date();
       fim.setHours(23, 59, 59, 999);
-
-      query = query
-        .gte("created_at", inicio.toISOString())
-        .lte("created_at", fim.toISOString());
+      query = query.gte("created_at", inicio.toISOString()).lte("created_at", fim.toISOString());
     }
 
     if (filtroPeriodo === "ultimos_7_dias") {
       const inicio = new Date();
       inicio.setDate(hoje.getDate() - 6);
       inicio.setHours(0, 0, 0, 0);
-
       const fim = new Date();
       fim.setHours(23, 59, 59, 999);
-
-      query = query
-        .gte("created_at", inicio.toISOString())
-        .lte("created_at", fim.toISOString());
+      query = query.gte("created_at", inicio.toISOString()).lte("created_at", fim.toISOString());
     }
 
     if (filtroPeriodo === "este_mes") {
       const inicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
       inicio.setHours(0, 0, 0, 0);
-
       const fim = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
       fim.setHours(23, 59, 59, 999);
-
-      query = query
-        .gte("created_at", inicio.toISOString())
-        .lte("created_at", fim.toISOString());
+      query = query.gte("created_at", inicio.toISOString()).lte("created_at", fim.toISOString());
     }
 
     if (filtroPeriodo === "personalizado") {
-      if (dataInicial) {
-        const inicio = new Date(`${dataInicial}T00:00:00`);
-        query = query.gte("created_at", inicio.toISOString());
-      }
-
-      if (dataFinal) {
-        const fim = new Date(`${dataFinal}T23:59:59`);
-        query = query.lte("created_at", fim.toISOString());
-      }
+      if (dataInicial) query = query.gte("created_at", new Date(`${dataInicial}T00:00:00`).toISOString());
+      if (dataFinal) query = query.lte("created_at", new Date(`${dataFinal}T23:59:59`).toISOString());
     }
 
     const { data, error } = await query;
 
     if (error) {
       console.error("Erro ao buscar OS:", error);
+      abrirModal({
+        title: "Erro ao carregar OS",
+        message: "Não foi possível carregar as ordens de serviço.",
+        type: "error",
+        confirmText: "Entendi",
+      });
+      setLoadingList(false);
       return;
     }
 
     setOsList(data || []);
+    setLoadingList(false);
   }
 
   async function buscarFiltros() {
-    const { data: teachersData } = await supabase
-      .from("teachers")
-      .select("*")
-      .order("name");
-
-    const { data: subjectsData } = await supabase
-      .from("subjects")
-      .select("*")
-      .order("name");
+    const { data: teachersData } = await supabase.from("teachers").select("*").order("name");
+    const { data: subjectsData } = await supabase.from("subjects").select("*").order("name");
 
     setTeachers(teachersData || []);
     setSubjects(subjectsData || []);
   }
-
-  useEffect(() => {
-    buscarOS();
-    buscarFiltros();
-  }, [
-    filtroStatus,
-    filtroProfessor,
-    filtroDisciplina,
-    filtroPeriodo,
-    dataInicial,
-    dataFinal,
-  ]);
 
   function limparFiltros() {
     setFiltroStatus("");
@@ -134,11 +184,7 @@ export default function ConsultarOS() {
 
   function formatarData(data: string) {
     if (!data) return "-";
-
-    return new Date(data).toLocaleString("pt-BR", {
-      dateStyle: "short",
-      timeStyle: "short",
-    });
+    return new Date(data).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
   }
 
   function nomeStatus(status: string) {
@@ -149,306 +195,252 @@ export default function ConsultarOS() {
   }
 
   function estiloStatus(status: string) {
-    if (status === "pendente") {
-      return "bg-slate-100 text-slate-700 ring-slate-200";
-    }
+    if (status === "pendente") return "bg-amber-50 text-amber-700 ring-amber-200";
+    if (status === "editando") return "bg-blue-50 text-blue-700 ring-blue-200";
+    if (status === "concluido") return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+    return "bg-slate-100 text-slate-700 ring-slate-200";
+  }
 
-    if (status === "editando") {
-      return "bg-amber-50 text-amber-700 ring-amber-200";
+  function emailStatusConfig(status?: string | null) {
+    if (status === "sent") {
+      return { label: "Enviado", icon: <CheckCircle2 size={14} />, className: "bg-emerald-50 text-emerald-700 ring-emerald-200" };
     }
-
-    if (status === "concluido") {
-      return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+    if (status === "sending") {
+      return { label: "Enviando", icon: <Loader2 className="animate-spin" size={14} />, className: "bg-blue-50 text-blue-700 ring-blue-200" };
     }
-
-    return "bg-gray-100 text-gray-700 ring-gray-200";
+    if (status === "error") {
+      return { label: "Erro", icon: <AlertCircle size={14} />, className: "bg-red-50 text-red-700 ring-red-200" };
+    }
+    return { label: "Pendente", icon: <Mail size={14} />, className: "bg-amber-50 text-amber-700 ring-amber-200" };
   }
 
   function minutosParaHoras(minutos: number) {
     const h = Math.floor(minutos / 60);
     const m = minutos % 60;
-
     return `${h}h ${String(m).padStart(2, "0")}min`;
   }
 
+  function nomeProfessor(os: any) {
+    return os.teachers?.name || os.professor_name || "-";
+  }
+
+  function nomeDisciplina(os: any) {
+    return os.subjects?.name || os.subject_name || "-";
+  }
+
+  function estaDentroDas12Horas(createdAt: string) {
+    if (!createdAt) return false;
+    const created = new Date(createdAt).getTime();
+    const diffInHours = (Date.now() - created) / (1000 * 60 * 60);
+    return diffInHours <= 12;
+  }
+
+  function canModifyOS(os: any) {
+    if (isAdmin) return true;
+    if (!isOperator || !user?.id || !os?.operator_id) return false;
+    return String(os.operator_id) === String(user.id) && estaDentroDas12Horas(os.created_at);
+  }
+
+  function motivoBloqueio(os: any) {
+    if (!isOperator) return "Sem permissão";
+    if (!os?.operator_id) return "OS sem operador vinculado";
+    if (String(os.operator_id) !== String(user?.id)) return "Criada por outro operador";
+    if (!estaDentroDas12Horas(os.created_at)) return "Prazo de 12h expirado";
+    return "Sem permissão";
+  }
+
+  function solicitarExcluirOS(os: any) {
+    if (!canModifyOS(os)) {
+      abrirModal({
+        title: "Exclusão bloqueada",
+        message: `Você não pode excluir esta OS. Motivo: ${motivoBloqueio(os)}.`,
+        type: "warning",
+        confirmText: "Entendi",
+      });
+      return;
+    }
+
+    abrirModal({
+      title: "Excluir OS?",
+      message: `Tem certeza que deseja excluir a OS ${os.os_number}? Essa ação não poderá ser desfeita.`,
+      type: "warning",
+      showCancel: true,
+      confirmText: "Sim, excluir",
+      cancelText: "Cancelar",
+      onConfirm: async () => {
+        fecharModal();
+        await excluirOS(os);
+      },
+      onCancel: fecharModal,
+    });
+  }
+
+  async function excluirOS(os: any) {
+    if (!canModifyOS(os)) return;
+
+    const { error } = await supabase.from("service_orders").delete().eq("id", os.id);
+
+    if (error) {
+      abrirModal({ title: "Erro ao excluir", message: "Não foi possível excluir esta OS.", type: "error", confirmText: "Entendi" });
+      return;
+    }
+
+    await buscarOS();
+    abrirModal({ title: "OS excluída", message: "A ordem de serviço foi excluída com sucesso.", type: "success", confirmText: "OK" });
+  }
+
   const totalOS = osList.length;
-
-  const totalArquivos = osList.reduce(
-    (total, os) => total + Number(os.file_count || 0),
-    0
-  );
-
-  const totalMinutos = osList.reduce(
-    (total, os) => total + Number(os.total_video_minutes || 0),
-    0
-  );
+  const totalArquivos = osList.reduce((total, os) => total + Number(os.file_count || 0), 0);
+  const totalMinutos = osList.reduce((total, os) => total + Number(os.total_video_minutes || 0), 0);
 
   return (
-    <main className="min-h-screen bg-[#f5f6f8] px-6 py-6">
-      <div className="mx-auto max-w-7xl space-y-6">
-        {/* TOPO */}
-        <header className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">
-              EstudoTOP OS
-            </p>
+    <PageBackground>
+      <PremiumLoadingOverlay show={loadingList} title="Carregando OS..." message="Estamos atualizando a lista de ordens de serviço." />
 
-            <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-900">
-              Consultar ordens de serviço
-            </h1>
+      <PageHeader
+        title="Ordens de serviço"
+        description="Consulte, filtre, acompanhe e gerencie as ordens de serviço do estúdio."
+        action={
+          <Link href="/os/nova">
+            <PremiumButton icon={<Plus size={18} />}>Nova OS</PremiumButton>
+          </Link>
+        }
+      />
 
-            <p className="mt-1 text-sm text-slate-500">
-              Acompanhe os envios, edições e conclusões de vídeos do estúdio.
-            </p>
+      <PremiumCard
+        title="Filtros"
+        description="Refine a listagem por professor, disciplina, status ou período."
+        icon={<Search size={21} />}
+        action={
+          <PremiumButton variant="secondary" icon={<RotateCcw size={17} />} onClick={limparFiltros}>
+            Limpar
+          </PremiumButton>
+        }
+      >
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
+          <PremiumSelect value={filtroStatus} onChange={(e: any) => setFiltroStatus(e.target.value)}>
+            <option value="">Todos os status</option>
+            <option value="pendente">Pendente</option>
+            <option value="editando">Em edição</option>
+            <option value="concluido">Concluído</option>
+          </PremiumSelect>
+
+          <PremiumSelect value={filtroProfessor} onChange={(e: any) => setFiltroProfessor(e.target.value)}>
+            <option value="">Todos os professores</option>
+            {teachers.map((teacher) => <option key={teacher.id} value={teacher.id}>{teacher.name}</option>)}
+          </PremiumSelect>
+
+          <PremiumSelect value={filtroDisciplina} onChange={(e: any) => setFiltroDisciplina(e.target.value)}>
+            <option value="">Todas as disciplinas</option>
+            {subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}
+          </PremiumSelect>
+
+          <PremiumSelect value={filtroPeriodo} onChange={(e: any) => setFiltroPeriodo(e.target.value)}>
+            <option value="">Todo o período</option>
+            <option value="hoje">Hoje</option>
+            <option value="ultimos_7_dias">Últimos 7 dias</option>
+            <option value="este_mes">Este mês</option>
+            <option value="personalizado">Personalizado</option>
+          </PremiumSelect>
+
+          <div className="grid grid-cols-2 gap-2">
+            <input type="date" value={dataInicial} onChange={(e) => setDataInicial(e.target.value)} disabled={filtroPeriodo !== "personalizado"} className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none disabled:opacity-40" />
+            <input type="date" value={dataFinal} onChange={(e) => setDataFinal(e.target.value)} disabled={filtroPeriodo !== "personalizado"} className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none disabled:opacity-40" />
           </div>
+        </div>
+      </PremiumCard>
 
-          <a
-            href="/os/nova"
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
-          >
-            <Plus size={18} />
-            Nova OS
-          </a>
-        </header>
+      <section className="my-5 grid grid-cols-1 gap-4 md:grid-cols-3">
+        <MiniResumo icon={<ClipboardList size={19} />} label="OS filtradas" value={totalOS} />
+        <MiniResumo icon={<FileVideo size={19} />} label="Arquivos" value={totalArquivos} />
+        <MiniResumo icon={<Clock size={19} />} label="Tempo total" value={minutosParaHoras(totalMinutos)} />
+      </section>
 
-        {/* FILTROS */}
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="mb-4 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Search size={18} className="text-slate-400" />
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
-                Filtros
-              </h2>
-            </div>
+      <div className="overflow-hidden rounded-[1.6rem] border border-white/80 bg-white shadow-sm ring-1 ring-slate-200/60">
+        <PremiumTable>
+          <PremiumTableHead>
+            <PremiumTableRow>
+              <PremiumTableHeader>OS</PremiumTableHeader>
+              <PremiumTableHeader>Envio</PremiumTableHeader>
+              <PremiumTableHeader>Operador</PremiumTableHeader>
+              <PremiumTableHeader>Professor</PremiumTableHeader>
+              <PremiumTableHeader>Disciplina</PremiumTableHeader>
+              <PremiumTableHeader>Status</PremiumTableHeader>
+              <PremiumTableHeader>E-mail</PremiumTableHeader>
+              <PremiumTableHeader>Arquivos</PremiumTableHeader>
+              <PremiumTableHeader>Tempo</PremiumTableHeader>
+              {showActions && <PremiumTableHeader>Ações</PremiumTableHeader>}
+            </PremiumTableRow>
+          </PremiumTableHead>
 
-            <button
-              onClick={limparFiltros}
-              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
-            >
-              <RotateCcw size={14} />
-              Limpar filtros
-            </button>
-          </div>
+          <PremiumTableBody>
+            {osList.length === 0 ? (
+              <PremiumTableRow>
+                <PremiumTableCell colSpan={showActions ? 10 : 9}>
+                  <div className="py-8 text-center text-sm text-slate-500">Nenhuma OS encontrada para os filtros selecionados.</div>
+                </PremiumTableCell>
+              </PremiumTableRow>
+            ) : (
+              osList.map((os) => {
+                const email = emailStatusConfig(os.email_status);
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-            <select
-              value={filtroProfessor}
-              onChange={(e) => setFiltroProfessor(e.target.value)}
-              className="input-clean"
-            >
-              <option value="">Todos os professores</option>
-              {teachers.map((teacher) => (
-                <option key={teacher.id} value={teacher.id}>
-                  {teacher.name}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={filtroDisciplina}
-              onChange={(e) => setFiltroDisciplina(e.target.value)}
-              className="input-clean"
-            >
-              <option value="">Todas as disciplinas</option>
-              {subjects.map((subject) => (
-                <option key={subject.id} value={subject.id}>
-                  {subject.name}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={filtroStatus}
-              onChange={(e) => setFiltroStatus(e.target.value)}
-              className="input-clean"
-            >
-              <option value="">Todos os status</option>
-              <option value="pendente">Pendente</option>
-              <option value="editando">Em edição</option>
-              <option value="concluido">Concluído</option>
-            </select>
-
-            <select
-              value={filtroPeriodo}
-              onChange={(e) => {
-                setFiltroPeriodo(e.target.value);
-                setDataInicial("");
-                setDataFinal("");
-              }}
-              className="input-clean"
-            >
-              <option value="">Todos os períodos</option>
-              <option value="hoje">Hoje</option>
-              <option value="ultimos_7_dias">Últimos 7 dias</option>
-              <option value="este_mes">Este mês</option>
-              <option value="personalizado">Personalizado</option>
-            </select>
-          </div>
-
-          {filtroPeriodo === "personalizado" && (
-            <div className="mt-4 grid grid-cols-1 gap-3 rounded-xl border border-blue-100 bg-blue-50/50 p-4 md:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-blue-700">
-                  Data inicial
-                </label>
-                <input
-                  type="date"
-                  value={dataInicial}
-                  onChange={(e) => setDataInicial(e.target.value)}
-                  className="input-clean"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-blue-700">
-                  Data final
-                </label>
-                <input
-                  type="date"
-                  value={dataFinal}
-                  onChange={(e) => setDataFinal(e.target.value)}
-                  className="input-clean"
-                />
-              </div>
-            </div>
-          )}
-        </section>
-
-        {/* TABELA */}
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-5 py-4">
-            <h2 className="text-sm font-semibold text-slate-900">
-              Ordens de serviço
-            </h2>
-            <p className="text-xs text-slate-500">
-              Clique em uma linha para abrir os detalhes da OS.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-8 gap-3 border-b border-slate-200 bg-slate-50 px-5 py-3 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            <div>OS</div>
-            <div>Envio</div>
-            <div>Professor</div>
-            <div>Disciplina</div>
-            <div>Arquivos</div>
-            <div>Tempo</div>
-            <div>Conclusão</div>
-            <div>Status</div>
-          </div>
-
-          {osList.length === 0 && (
-            <div className="p-8 text-center text-sm text-slate-500">
-              Nenhuma OS encontrada para os filtros selecionados.
-            </div>
-          )}
-
-          {osList.map((os) => (
-            <a
-              key={os.id}
-              href={`/os/${os.id}`}
-              className="grid grid-cols-8 gap-3 border-b border-slate-100 px-5 py-4 text-sm text-slate-700 transition hover:bg-slate-50"
-            >
-              <div className="font-semibold text-slate-900">{os.os_number}</div>
-
-              <div className="text-slate-500">{formatarData(os.created_at)}</div>
-
-              <div className="truncate font-medium" title={os.professor_name}>
-                {os.professor_name || "-"}
-              </div>
-
-              <div className="truncate text-slate-500" title={os.subject_name}>
-                {os.subject_name || "-"}
-              </div>
-
-              <div>{os.file_count || 0}</div>
-
-              <div>{os.total_video_time || "-"}</div>
-
-              <div className="text-slate-500">
-                {os.completed_at ? formatarData(os.completed_at) : "-"}
-              </div>
-
-              <div>
-                <span
-                  className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ring-1 ${estiloStatus(
-                    os.status
-                  )}`}
-                >
-                  {nomeStatus(os.status)}
-                </span>
-              </div>
-            </a>
-          ))}
-        </section>
-
-        {/* MINI DASHBOARD */}
-        <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <MiniCard
-            icon={<ClipboardList size={20} />}
-            titulo="Total de OS"
-            valor={totalOS}
-            detalhe="Resultado dos filtros aplicados"
-          />
-
-          <MiniCard
-            icon={<FileVideo size={20} />}
-            titulo="Total de arquivos"
-            valor={totalArquivos}
-            detalhe="Arquivos nas OS filtradas"
-          />
-
-          <MiniCard
-            icon={<Clock size={20} />}
-            titulo="Tempo total"
-            valor={minutosParaHoras(totalMinutos)}
-            detalhe="Soma dos tempos das OS filtradas"
-          />
-        </section>
+                return (
+                  <PremiumTableRow key={os.id}>
+                    <PremiumTableCell>
+                      <Link href={`/os/${os.id}`} className="font-semibold text-slate-900 hover:text-orange-600">
+                        {os.os_number}
+                      </Link>
+                    </PremiumTableCell>
+                    <PremiumTableCell>{formatarData(os.created_at)}</PremiumTableCell>
+                    <PremiumTableCell>{os.operator_name || "Não registrado"}</PremiumTableCell>
+                    <PremiumTableCell>{nomeProfessor(os)}</PremiumTableCell>
+                    <PremiumTableCell>{nomeDisciplina(os)}</PremiumTableCell>
+                    <PremiumTableCell>
+                      <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ring-1 ${estiloStatus(os.status)}`}>
+                        {nomeStatus(os.status)}
+                      </span>
+                    </PremiumTableCell>
+                    <PremiumTableCell>
+                      <span title={os.email_error || ""} className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ring-1 ${email.className}`}>
+                        {email.icon}
+                        {email.label}
+                      </span>
+                    </PremiumTableCell>
+                    <PremiumTableCell>{os.file_count || 0}</PremiumTableCell>
+                    <PremiumTableCell>{os.total_video_time || "-"}</PremiumTableCell>
+                    {showActions && (
+                      <PremiumTableCell>
+                        <div className="flex items-center gap-2">
+                          <Link href={`/os/${os.id}`} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50">Abrir</Link>
+                          {canModifyOS(os) && (
+                            <button type="button" onClick={() => solicitarExcluirOS(os)} className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-100">
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
+                      </PremiumTableCell>
+                    )}
+                  </PremiumTableRow>
+                );
+              })
+            )}
+          </PremiumTableBody>
+        </PremiumTable>
       </div>
 
-      <style jsx>{`
-        .input-clean {
-          width: 100%;
-          border-radius: 0.75rem;
-          border: 1px solid #e2e8f0;
-          background: white;
-          padding: 0.75rem 0.875rem;
-          font-size: 0.875rem;
-          font-weight: 500;
-          color: #334155;
-          outline: none;
-          transition: all 0.15s ease;
-        }
-
-        .input-clean:focus {
-          border-color: #93c5fd;
-          box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.25);
-        }
-      `}</style>
-    </main>
+      <SystemModal {...modal} />
+    </PageBackground>
   );
 }
 
-function MiniCard({
-  icon,
-  titulo,
-  valor,
-  detalhe,
-}: {
-  icon: React.ReactNode;
-  titulo: string;
-  valor: any;
-  detalhe: string;
-}) {
+function MiniResumo({ icon, label, value }: any) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+    <div className="rounded-2xl border border-white/80 bg-white p-5 shadow-sm ring-1 ring-slate-200/60">
+      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-amber-400 text-slate-950 shadow-lg shadow-orange-500/20">
         {icon}
       </div>
-
-      <p className="text-sm font-medium text-slate-500">{titulo}</p>
-      <p className="mt-1 text-2xl font-semibold text-slate-900">{valor}</p>
-      <p className="mt-1 text-xs text-slate-400">{detalhe}</p>
+      <p className="text-xs font-medium uppercase tracking-[0.16em] text-slate-400">{label}</p>
+      <p className="mt-2 text-2xl font-semibold text-slate-950">{value}</p>
     </div>
   );
 }

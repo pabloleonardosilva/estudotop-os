@@ -1,6 +1,7 @@
 import "./globals.css";
 import AppShell from "./components/AppShell";
 import { Inter } from "next/font/google";
+import { AuthProvider } from "./contexts/AuthContext";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -21,7 +22,9 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" className={inter.variable}>
       <body className="bg-[#f5f6f8] font-sans text-slate-800">
-        <AppShell>{children}</AppShell>
+        <AuthProvider>
+          <AppShell>{children}</AppShell>
+        </AuthProvider>
       </body>
     </html>
   );

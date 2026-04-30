@@ -14,10 +14,12 @@ import {
   UserRound,
 } from "lucide-react";
 import { supabase } from "../../../../lib/supabase";
+import { useAuth } from "../../../contexts/AuthContext";
 import SystemModal from "../../../components/SystemModal";
 
 export default function EditarOS() {
   const { id } = useParams();
+  const { user, profile } = useAuth();
 
   const [os, setOs] = useState<any>(null);
   const [teachers, setTeachers] = useState<any[]>([]);
@@ -95,15 +97,12 @@ export default function EditarOS() {
       .single();
 
     if (error) {
-      console.error(error);
-
       abrirModal({
         title: "Erro ao carregar OS",
         message: "Não foi possível carregar os dados desta ordem de serviço.",
         type: "error",
         confirmText: "Entendi",
       });
-
       return;
     }
 
@@ -154,6 +153,72 @@ export default function EditarOS() {
     return 0;
   }
 
+  function getUserName() {
+    return profile?.name || user?.email || "Usuário";
+  }
+
+  function formatValue(value: any) {
+    if (value === null || value === undefined || value === "") return "-";
+    return String(value);
+  }
+
+  function criarDescricaoHistorico(updateData: any) {
+    if (!os) return "OS atualizada.";
+
+    const alteracoes: string[] = [];
+
+    const campos = [
+      {
+        label: "Professor",
+        oldValue: os.professor_name,
+        newValue: updateData.professor_name,
+      },
+      {
+        label: "Disciplina",
+        oldValue: os.subject_name,
+        newValue: updateData.subject_name,
+      },
+      {
+        label: "Quantidade de arquivos",
+        oldValue: os.file_count,
+        newValue: updateData.file_count,
+      },
+      {
+        label: "Tempo total dos vídeos",
+        oldValue: os.total_video_time,
+        newValue: updateData.total_video_time,
+      },
+      {
+        label: "Link do Drive",
+        oldValue: os.drive_link,
+        newValue: updateData.drive_link,
+      },
+      {
+        label: "Observações",
+        oldValue: os.notes,
+        newValue: updateData.notes,
+      },
+    ];
+
+    campos.forEach((campo) => {
+      if (formatValue(campo.oldValue) !== formatValue(campo.newValue)) {
+        alteracoes.push(
+          `${campo.label}: "${formatValue(campo.oldValue)}" → "${formatValue(
+            campo.newValue
+          )}"`
+        );
+      }
+    });
+
+    if (alteracoes.length === 0) {
+      return `OS ${os.os_number} salva por ${getUserName()}, sem alterações relevantes.`;
+    }
+
+    return `OS ${os.os_number} atualizada por ${getUserName()}. Alterações: ${alteracoes.join(
+      "; "
+    )}.`;
+  }
+
   function solicitarSalvar(e: any) {
     e.preventDefault();
 
@@ -173,6 +238,16 @@ export default function EditarOS() {
   }
 
   async function salvar() {
+    if (!user) {
+      abrirModal({
+        title: "Usuário não identificado",
+        message: "Faça login novamente para salvar esta OS.",
+        type: "error",
+        confirmText: "Entendi",
+      });
+      return;
+    }
+
     const selectedTeacher = teachers.find(
       (teacher) => String(teacher.id) === String(form.teacher_id)
     );
@@ -211,14 +286,9 @@ export default function EditarOS() {
       notes: form.notes,
       total_video_time: form.total_video_time,
       total_video_minutes: tempoParaMinutos(form.total_video_time),
-      status: form.status,
     };
 
-    if (form.status === "concluido") {
-      updateData.completed_at = form.completed_at || new Date().toISOString();
-    } else {
-      updateData.completed_at = null;
-    }
+    const description = criarDescricaoHistorico(updateData);
 
     const { error } = await supabase
       .from("service_orders")
@@ -226,17 +296,24 @@ export default function EditarOS() {
       .eq("id", id);
 
     if (error) {
-      console.error(error);
-
       abrirModal({
         title: "Erro ao salvar",
         message: "Não foi possível salvar as alterações desta OS.",
         type: "error",
         confirmText: "Entendi",
       });
-
       return;
     }
+
+    await supabase.from("service_order_history").insert([
+      {
+        service_order_id: Number(id),
+        user_id: user.id,
+        user_name: getUserName(),
+        action: "updated",
+        description,
+      },
+    ]);
 
     ignorarAvisoSaida.current = true;
     setAlterado(false);
@@ -276,34 +353,10 @@ export default function EditarOS() {
     window.location.href = `/os/${id}`;
   }
 
-  function nomeStatus(status: string) {
-    if (status === "pendente") return "Pendente";
-    if (status === "editando") return "Em edição";
-    if (status === "concluido") return "Concluído";
-    return status || "-";
-  }
-
-  function estiloStatus(status: string) {
-    if (status === "pendente") {
-      return "bg-slate-100 text-slate-700 ring-slate-200";
-    }
-
-    if (status === "editando") {
-      return "bg-amber-50 text-amber-700 ring-amber-200";
-    }
-
-    if (status === "concluido") {
-      return "bg-emerald-50 text-emerald-700 ring-emerald-200";
-    }
-
-    return "bg-gray-100 text-gray-700 ring-gray-200";
-  }
-
   if (!os) {
     return (
       <main className="min-h-screen bg-[#f5f6f8] px-6 py-6">
         <p className="text-sm font-medium text-slate-500">Carregando OS...</p>
-
         <SystemModal {...modal} />
       </main>
     );
@@ -314,23 +367,13 @@ export default function EditarOS() {
       <div className="mx-auto max-w-5xl space-y-6">
         <header className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-500">
               EstudoTOP OS
             </p>
 
-            <div className="mt-2 flex flex-wrap items-center gap-3">
-              <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
-                Editar {os.os_number}
-              </h1>
-
-              <span
-                className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ring-1 ${estiloStatus(
-                  form.status
-                )}`}
-              >
-                {nomeStatus(form.status)}
-              </span>
-            </div>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">
+              Editar {os.os_number}
+            </h1>
 
             <p className="mt-1 text-sm text-slate-500">
               Atualize os dados da ordem de serviço.
@@ -350,7 +393,7 @@ export default function EditarOS() {
             <button
               type="submit"
               form="form-editar-os"
-              className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
+              className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-600"
             >
               <Save size={18} />
               Salvar alterações
@@ -452,31 +495,16 @@ export default function EditarOS() {
           </Panel>
 
           <Panel title="Status da OS">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <Campo label="Status atual" icon={<CheckCircle2 size={18} />}>
-                <select
-                  name="status"
-                  value={form.status || "pendente"}
-                  onChange={handleChange}
-                  className="input-clean"
-                >
-                  <option value="pendente">Pendente</option>
-                  <option value="editando">Em edição</option>
-                  <option value="concluido">Concluído</option>
-                </select>
-              </Campo>
-
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                  Regra automática
-                </p>
-
-                <p className="mt-2 text-sm leading-relaxed text-slate-600">
-                  Ao marcar como concluído, o sistema registra automaticamente a
-                  data de conclusão. Se voltar para pendente ou em edição, a data
-                  de conclusão será removida.
-                </p>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                <CheckCircle2 size={18} />
+                Status atual
               </div>
+
+              <p className="text-sm font-semibold text-slate-700">
+                O status agora deve ser alterado somente na tela de detalhes da
+                OS, por um administrador.
+              </p>
             </div>
           </Panel>
         </form>
@@ -499,8 +527,8 @@ export default function EditarOS() {
         }
 
         .input-clean:focus {
-          border-color: #93c5fd;
-          box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.25);
+          border-color: #fb923c;
+          box-shadow: 0 0 0 3px rgba(251, 146, 60, 0.18);
         }
       `}</style>
     </main>

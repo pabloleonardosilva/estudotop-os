@@ -2,9 +2,14 @@
 
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import { LogOut } from "lucide-react";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function Header() {
   const pathname = usePathname();
+  const { profile, signOut } = useAuth();
+
+  const isAdmin = profile?.role === "admin";
 
   function menuClass(ativo: boolean) {
     return ativo
@@ -45,9 +50,22 @@ export default function Header() {
             OS
           </a>
 
-          <a href="/dashboard" className={menuClass(pathname === "/dashboard")}>
-            Dashboard
-          </a>
+          {isAdmin && (
+            <a
+              href="/dashboard"
+              className={menuClass(pathname === "/dashboard")}
+            >
+              Dashboard
+            </a>
+          )}
+
+          <button
+            onClick={signOut}
+            className="ml-2 inline-flex items-center gap-2 rounded-2xl border border-white/10 px-4 py-3 text-sm font-medium text-slate-300 transition hover:bg-white/10 hover:text-white"
+          >
+            <LogOut size={16} />
+            Sair
+          </button>
         </nav>
       </div>
     </header>

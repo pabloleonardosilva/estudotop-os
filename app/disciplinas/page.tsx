@@ -1,20 +1,81 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { BookOpen, Edit3, Plus, Save, Search, Trash2 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
+import SystemModal from "../components/SystemModal";
+import PageBackground from "../components/ui/PageBackground";
+import PageHeader from "../components/ui/PageHeader";
+import PremiumCard from "../components/ui/PremiumCard";
+import PremiumButton from "../components/ui/PremiumButton";
+import PremiumInput from "../components/ui/PremiumInput";
+import {
+  PremiumTable,
+  PremiumTableBody,
+  PremiumTableCell,
+  PremiumTableHead,
+  PremiumTableHeader,
+  PremiumTableRow,
+} from "../components/ui/PremiumTable";
 
 export default function DisciplinasPage() {
   const [disciplinas, setDisciplinas] = useState<any[]>([]);
   const [busca, setBusca] = useState("");
   const [editandoId, setEditandoId] = useState<number | null>(null);
+  const [form, setForm] = useState({ name: "" });
 
-  const [form, setForm] = useState({
-    name: "",
+  const [modal, setModal] = useState<any>({
+    open: false,
+    title: "",
+    message: "",
+    type: "info",
+    showCancel: false,
+    confirmText: "Confirmar",
+    cancelText: "Cancelar",
+    onConfirm: null,
+    onCancel: null,
   });
 
   useEffect(() => {
     carregarDisciplinas();
   }, []);
+
+  function normalizarNome(valor: string) {
+    return valor
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .toUpperCase();
+  }
+
+  function fecharModal() {
+    setModal({
+      open: false,
+      title: "",
+      message: "",
+      type: "info",
+      showCancel: false,
+      confirmText: "Confirmar",
+      cancelText: "Cancelar",
+      onConfirm: null,
+      onCancel: null,
+    });
+  }
+
+  function abrirModal(config: any) {
+    setModal({
+      open: true,
+      title: config.title || "",
+      message: config.message || "",
+      type: config.type || "info",
+      showCancel: config.showCancel || false,
+      confirmText: config.confirmText || "Confirmar",
+      cancelText: config.cancelText || "Cancelar",
+      onConfirm: config.onConfirm || fecharModal,
+      onCancel: config.onCancel || fecharModal,
+    });
+  }
 
   async function carregarDisciplinas() {
     const { data, error } = await supabase
@@ -23,8 +84,11 @@ export default function DisciplinasPage() {
       .order("name");
 
     if (error) {
-      console.error("Erro ao carregar disciplinas:", error);
-      alert("Erro ao carregar disciplinas");
+      abrirModal({
+        title: "Erro",
+        message: "Não foi possível carregar as disciplinas.",
+        type: "error",
+      });
       return;
     }
 
@@ -37,271 +101,313 @@ export default function DisciplinasPage() {
   }
 
   function handleChange(e: any) {
-    setForm({
-      ...form,
-      [e.target.name]: e.target.value,
-    });
+    setForm({ ...form, [e.target.name]: e.target.value });
   }
 
-  function normalizarTexto(texto: string) {
-    return texto.trim().toLowerCase();
-  }
-
-  async function verificarDuplicidade() {
-    const nome = normalizarTexto(form.name);
-
-    const { data, error } = await supabase.from("subjects").select("*");
-
-    if (error) {
-      console.error("Erro ao verificar duplicidade:", error);
-      alert("Erro ao verificar duplicidade");
-      return true;
-    }
-
-    const duplicada = (data || []).find((disciplina) => {
-      if (editandoId && disciplina.id === editandoId) {
-        return false;
-      }
-
-      return normalizarTexto(disciplina.name || "") === nome;
-    });
-
-    if (duplicada) {
-      alert(
-        `Disciplina já cadastrada (mesmo nome):\n\n${duplicada.name || "-"}`
-      );
+  function tratarErroDuplicidade(error: any) {
+    if (error?.code === "23505") {
+      abrirModal({
+        title: "Disciplina duplicada",
+        message:
+          "Já existe uma disciplina com esse nome. O banco bloqueou o cadastro duplicado.",
+        type: "warning",
+      });
       return true;
     }
 
     return false;
   }
 
-  async function salvarDisciplina(e: any) {
+  function solicitarSalvarDisciplina(e: any) {
     e.preventDefault();
 
-    if (!form.name.trim()) {
-      alert("Informe o nome da disciplina");
+    abrirModal({
+      title: editandoId ? "Salvar edição?" : "Cadastrar disciplina?",
+      message: editandoId
+        ? "Tem certeza que deseja salvar as alterações desta disciplina?"
+        : "Tem certeza que deseja cadastrar esta disciplina?",
+      type: "warning",
+      showCancel: true,
+      confirmText: editandoId ? "Sim, salvar" : "Sim, cadastrar",
+      cancelText: "Cancelar",
+      onConfirm: async () => {
+        fecharModal();
+        await salvarDisciplina();
+      },
+      onCancel: fecharModal,
+    });
+  }
+
+  async function salvarDisciplina() {
+    const name = form.name.trim().replace(/\s+/g, " ").toUpperCase();
+
+    if (!name) {
+      abrirModal({
+        title: "Nome obrigatório",
+        message: "Informe o nome da disciplina.",
+        type: "warning",
+      });
       return;
     }
 
-    const temDuplicidade = await verificarDuplicidade();
-
-    if (temDuplicidade) {
-      return;
-    }
-
-    const dadosDisciplina = {
-      name: form.name.trim(),
+    const payload = {
+      name,
+      normalized_name: normalizarNome(name),
     };
 
     if (editandoId) {
-      const confirmar = confirm(
-        "Tem certeza que deseja salvar as alterações desta disciplina?"
-      );
-
-      if (!confirmar) {
-        return;
-      }
-
       const { error } = await supabase
         .from("subjects")
-        .update(dadosDisciplina)
+        .update(payload)
         .eq("id", editandoId);
 
       if (error) {
-        console.error("Erro ao editar disciplina:", error);
-        alert("Erro ao editar disciplina");
+        if (tratarErroDuplicidade(error)) return;
+
+        abrirModal({
+          title: "Erro",
+          message: "Não foi possível editar a disciplina.",
+          type: "error",
+        });
         return;
       }
 
-      alert("Disciplina atualizada com sucesso!");
+      abrirModal({
+        title: "Disciplina atualizada",
+        message: "As alterações foram salvas com sucesso.",
+        type: "success",
+      });
     } else {
-      const { error } = await supabase.from("subjects").insert([dadosDisciplina]);
+      const { error } = await supabase.from("subjects").insert([payload]);
 
       if (error) {
-        console.error("Erro ao cadastrar disciplina:", error);
-        alert("Erro ao cadastrar disciplina");
+        if (tratarErroDuplicidade(error)) return;
+
+        abrirModal({
+          title: "Erro",
+          message: "Não foi possível cadastrar a disciplina.",
+          type: "error",
+        });
         return;
       }
 
-      alert("Disciplina cadastrada com sucesso!");
+      abrirModal({
+        title: "Disciplina cadastrada",
+        message: "A disciplina foi cadastrada com sucesso.",
+        type: "success",
+      });
     }
 
     limparFormulario();
-    carregarDisciplinas();
+    await carregarDisciplinas();
   }
 
   function editarDisciplina(disciplina: any) {
     setEditandoId(disciplina.id);
-    setForm({
-      name: disciplina.name || "",
-    });
+    setForm({ name: disciplina.name || "" });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth",
+  function solicitarExcluirDisciplina(disciplina: any) {
+    abrirModal({
+      title: "Excluir disciplina?",
+      message: `Tem certeza que deseja excluir "${disciplina.name}"? Essa ação não poderá ser desfeita.`,
+      type: "warning",
+      showCancel: true,
+      confirmText: "Sim, excluir",
+      cancelText: "Cancelar",
+      onConfirm: async () => {
+        fecharModal();
+        await excluirDisciplina(disciplina);
+      },
+      onCancel: fecharModal,
     });
   }
 
-  const disciplinasFiltradas = disciplinas.filter((disciplina) => {
-    const termo = busca.toLowerCase();
-    const nome = `${disciplina.name || ""}`.toLowerCase();
+  async function excluirDisciplina(disciplina: any) {
+    const { data: osVinculadas, error: erroConsulta } = await supabase
+      .from("service_orders")
+      .select("id")
+      .eq("subject_id", disciplina.id)
+      .limit(1);
 
-    return nome.includes(termo);
-  });
+    if (erroConsulta) {
+      abrirModal({
+        title: "Erro ao verificar vínculos",
+        message:
+          "Não foi possível verificar se esta disciplina possui OS vinculadas.",
+        type: "error",
+      });
+      return;
+    }
+
+    if (osVinculadas && osVinculadas.length > 0) {
+      abrirModal({
+        title: "Exclusão bloqueada",
+        message:
+          "Não é possível excluir esta disciplina porque ela já está vinculada a uma ou mais OS.",
+        type: "warning",
+      });
+      return;
+    }
+
+    const { error } = await supabase
+      .from("subjects")
+      .delete()
+      .eq("id", disciplina.id);
+
+    if (error) {
+      abrirModal({
+        title: "Erro ao excluir",
+        message: "Não foi possível excluir esta disciplina.",
+        type: "error",
+      });
+      return;
+    }
+
+    await carregarDisciplinas();
+
+    abrirModal({
+      title: "Disciplina excluída",
+      message: "A disciplina foi excluída com sucesso.",
+      type: "success",
+    });
+  }
+
+  const disciplinasFiltradas = disciplinas.filter((disciplina) =>
+    `${disciplina.name || ""}`.toLowerCase().includes(busca.toLowerCase())
+  );
 
   return (
-    <main className="min-h-screen bg-[#e9e9ec] p-4 md:p-6">
-      <div className="mx-auto max-w-7xl overflow-hidden rounded-2xl border border-gray-300 bg-[#f8f8f8] shadow-2xl">
-        <header className="border-b border-gray-300 bg-white px-6 py-6">
-          <p className="text-xs font-black uppercase tracking-[0.25em] text-blue-600">
-            EstudoTOP OS
-          </p>
+    <PageBackground>
+      <PageHeader
+        title="Disciplinas"
+        description="Cadastre, consulte, edite e gerencie disciplinas usadas nas ordens de serviço."
+      />
 
-          <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950">
-            Disciplinas
-          </h1>
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[420px_1fr]">
+        <form onSubmit={solicitarSalvarDisciplina}>
+          <PremiumCard
+            title={editandoId ? "Editar disciplina" : "Nova disciplina"}
+            description={
+              editandoId
+                ? "Atualize o nome da disciplina selecionada."
+                : "Cadastre uma nova disciplina no sistema."
+            }
+            icon={<BookOpen size={22} />}
+          >
+            <div className="space-y-4">
+              <PremiumInput
+                label="Nome da disciplina"
+                name="name"
+                value={form.name}
+                uppercase
+                onChange={handleChange}
+                placeholder="Ex.: INFORMÁTICA"
+              />
 
-          <p className="mt-2 max-w-2xl text-sm font-semibold text-slate-500">
-            Cadastre, consulte e edite disciplinas usadas nas ordens de serviço.
-          </p>
-        </header>
-
-        <section className="grid grid-cols-1 gap-6 p-6 lg:grid-cols-3">
-          <div className="lg:col-span-1">
-            <div className="overflow-hidden rounded-xl border border-gray-300 bg-white shadow">
-              <div className="bg-gradient-to-r from-slate-900 to-slate-700 px-4 py-3">
-                <h2 className="text-sm font-black uppercase tracking-wide text-white">
-                  {editandoId ? "Editar disciplina" : "Cadastrar disciplina"}
-                </h2>
-              </div>
-
-              <form onSubmit={salvarDisciplina} className="space-y-4 p-5">
-                <Campo label="Nome da disciplina">
-                  <input
-                    name="name"
-                    value={form.name}
-                    onChange={handleChange}
-                    placeholder="Ex.: Informática"
-                    className="input"
-                  />
-                </Campo>
-
-                <div className="flex gap-3 pt-3">
-                  {editandoId && (
-                    <button
-                      type="button"
-                      onClick={limparFormulario}
-                      className="w-1/2 rounded bg-gray-200 px-4 py-3 text-sm font-bold text-gray-800 hover:bg-gray-300"
-                    >
-                      Cancelar
-                    </button>
-                  )}
-
-                  <button
-                    className={`rounded bg-blue-600 px-4 py-3 text-sm font-bold text-white hover:bg-blue-700 ${
-                      editandoId ? "w-1/2" : "w-full"
-                    }`}
+              <div className="flex gap-3">
+                {editandoId && (
+                  <PremiumButton
+                    type="button"
+                    variant="secondary"
+                    full
+                    onClick={limparFormulario}
                   >
-                    {editandoId ? "Salvar edição" : "Cadastrar"}
-                  </button>
-                </div>
-              </form>
+                    Cancelar
+                  </PremiumButton>
+                )}
+
+                <PremiumButton
+                  type="submit"
+                  full
+                  icon={editandoId ? <Save size={18} /> : <Plus size={18} />}
+                >
+                  {editandoId ? "Salvar edição" : "Cadastrar"}
+                </PremiumButton>
+              </div>
             </div>
+          </PremiumCard>
+        </form>
+
+        <PremiumCard
+          title="Disciplinas cadastradas"
+          description={`${disciplinasFiltradas.length} disciplina(s) encontrada(s).`}
+        >
+          <div className="relative mb-5">
+            <Search
+              size={17}
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+            />
+
+            <input
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar por nome da disciplina"
+              className="h-12 w-full rounded-2xl border border-slate-200 bg-white pl-11 pr-4 text-sm outline-none transition placeholder:text-slate-400 focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+            />
           </div>
 
-          <div className="lg:col-span-2">
-            <div className="overflow-hidden rounded-xl border border-gray-300 bg-white shadow">
-              <div className="bg-gradient-to-r from-slate-900 to-slate-700 px-4 py-3">
-                <h2 className="text-sm font-black uppercase tracking-wide text-white">
-                  Consultar disciplinas
-                </h2>
-              </div>
+          <PremiumTable>
+            <PremiumTableHead>
+              <tr>
+                <PremiumTableHeader>Disciplina</PremiumTableHeader>
+                <PremiumTableHeader>ID</PremiumTableHeader>
+                <PremiumTableHeader align="right">Ações</PremiumTableHeader>
+              </tr>
+            </PremiumTableHead>
 
-              <div className="border-b border-gray-200 bg-gray-50 p-4">
-                <input
-                  value={busca}
-                  onChange={(e) => setBusca(e.target.value)}
-                  placeholder="Pesquisar por nome da disciplina"
-                  className="input"
-                />
-              </div>
-
-              <div className="grid grid-cols-4 gap-3 border-b border-gray-300 bg-slate-100 px-4 py-3 text-xs font-black uppercase tracking-wide text-slate-700">
-                <div className="col-span-2">Disciplina</div>
-                <div>ID</div>
-                <div>Ações</div>
-              </div>
-
-              {disciplinasFiltradas.length === 0 && (
-                <div className="p-6 text-center text-sm font-semibold text-slate-500">
-                  Nenhuma disciplina encontrada.
-                </div>
-              )}
-
+            <PremiumTableBody>
               {disciplinasFiltradas.map((disciplina) => (
-                <div
-                  key={disciplina.id}
-                  className="grid grid-cols-4 gap-3 border-b border-gray-100 px-4 py-4 text-sm font-semibold text-slate-700 hover:bg-blue-50"
-                >
-                  <div className="col-span-2">
-                    <p className="font-black text-slate-900">
+                <PremiumTableRow key={disciplina.id}>
+                  <PremiumTableCell>
+                    <p className="font-medium text-slate-950">
                       {disciplina.name || "-"}
                     </p>
-                  </div>
+                  </PremiumTableCell>
 
-                  <div className="text-slate-500">#{disciplina.id}</div>
+                  <PremiumTableCell>#{disciplina.id}</PremiumTableCell>
 
-                  <div>
-                    <button
-                      onClick={() => editarDisciplina(disciplina)}
-                      className="rounded bg-slate-800 px-3 py-2 text-xs font-bold text-white hover:bg-slate-900"
-                    >
-                      Editar
-                    </button>
-                  </div>
-                </div>
+                  <PremiumTableCell align="right">
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => editarDisciplina(disciplina)}
+                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 transition hover:border-orange-300 hover:bg-orange-50 hover:text-orange-700"
+                      >
+                        <Edit3 size={14} />
+                        Editar
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => solicitarExcluirDisciplina(disciplina)}
+                        className="inline-flex items-center justify-center rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600 transition hover:bg-red-100"
+                        title="Excluir disciplina"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </PremiumTableCell>
+                </PremiumTableRow>
               ))}
-            </div>
-          </div>
-        </section>
+
+              {disciplinasFiltradas.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={3}
+                    className="px-4 py-10 text-center text-sm text-slate-500"
+                  >
+                    Nenhuma disciplina encontrada.
+                  </td>
+                </tr>
+              )}
+            </PremiumTableBody>
+          </PremiumTable>
+        </PremiumCard>
       </div>
 
-      <style jsx>{`
-        .input {
-          width: 100%;
-          border-radius: 0.75rem;
-          border: 1px solid #d1d5db;
-          background: white;
-          padding: 0.75rem;
-          font-size: 0.875rem;
-          font-weight: 600;
-          color: #334155;
-          outline: none;
-        }
-
-        .input:focus {
-          border-color: #2563eb;
-          box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
-        }
-      `}</style>
-    </main>
-  );
-}
-
-function Campo({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-xs font-black uppercase tracking-wide text-slate-500">
-        {label}
-      </span>
-      {children}
-    </label>
+      <SystemModal {...modal} />
+    </PageBackground>
   );
 }
