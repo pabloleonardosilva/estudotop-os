@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * ARQUIVO: Disciplinas
+ * OBJETIVO: gerencia subjects usados na criação/filtro de OS.
+ * ONDE MEXER: cadastro, edição, exclusão e validação.
+ * CUIDADO: disciplina pode estar ligada a OS antigas.
+ */
+
 import { useEffect, useState } from "react";
 import { BookOpen, Edit3, Plus, Save, Search, Trash2 } from "lucide-react";
 import { supabase } from "../../lib/supabase";

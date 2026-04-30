@@ -1,7 +1,15 @@
+/**
+ * ARQUIVO: API para criar usuários
+ * OBJETIVO: admin cria usuário no Supabase Auth e perfil em profiles.
+ * ONDE MEXER: validações, papéis e mensagens de erro.
+ * CUIDADO: usa service role; nunca mova para frontend.
+ */
+
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
 
+// Endpoint chamado pelo frontend para executar uma ação segura no servidor.
 export async function POST(request: Request) {
   try {
     const authHeader = request.headers.get("authorization");

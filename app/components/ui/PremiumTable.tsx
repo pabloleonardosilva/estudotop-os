@@ -1,3 +1,10 @@
+/**
+ * ARQUIVO: Tabela premium
+ * OBJETIVO: padroniza tabelas do sistema.
+ * ONDE MEXER: espaçamento, bordas, alinhamento e colSpan.
+ * CUIDADO: preserve exports existentes.
+ */
+
 import { ReactNode } from "react";
 
 export function PremiumTable({ children }: { children: ReactNode }) {

@@ -1,3 +1,10 @@
+/**
+ * ARQUIVO: Botão premium
+ * OBJETIVO: padroniza botões do sistema.
+ * ONDE MEXER: variantes visuais e estado disabled.
+ * CUIDADO: afeta botões no sistema todo.
+ */
+
 import { ReactNode } from "react";
 
 export default function PremiumButton({

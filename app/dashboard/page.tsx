@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * ARQUIVO: Dashboard
+ * OBJETIVO: mostra métricas de OS, produção e saúde dos e-mails.
+ * ONDE MEXER: cálculos, cards e faixa de status de e-mail.
+ * CUIDADO: rota administrativa controlada no AppShell.
+ */
+
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";

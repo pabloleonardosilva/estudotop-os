@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * ARQUIVO: Casca global do sistema
+ * OBJETIVO: controla Header, Sidebar, proteção de rotas e rodapé.
+ * ONDE MEXER: permissões, redirects e rodapé institucional.
+ * CUIDADO: afeta todas as telas internas.
+ */
+
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Header from "./Header";

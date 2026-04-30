@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * ARQUIVO: Detalhe de uma OS
+ * OBJETIVO: mostra dados completos da OS, histórico, status de e-mail e ações.
+ * ONDE MEXER: carregarOS(), alterarStatus(), reenviarEmail() e blocos visuais.
+ * CUIDADO: id vem da URL; PDF e e-mail dependem destes dados.
+ */
+
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -126,6 +133,7 @@ export default function DetalheOS() {
     setLoadingPage(false);
   }
 
+  // Busca os dados da OS atual no Supabase.
   async function carregarOS() {
     const { data, error } = await supabase
       .from("service_orders")

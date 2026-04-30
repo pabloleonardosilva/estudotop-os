@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * ARQUIVO: Professores
+ * OBJETIVO: gerencia teachers usados na criação/filtro de OS.
+ * ONDE MEXER: cadastro, edição, exclusão e validação.
+ * CUIDADO: professor pode estar ligado a OS antigas.
+ */
+
 import { useEffect, useMemo, useState } from "react";
 import {
   Edit3,

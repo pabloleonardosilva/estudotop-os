@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * ARQUIVO: Edição de OS
+ * OBJETIVO: permite alterar dados de uma OS existente.
+ * ONDE MEXER: carregamento da OS, campos editáveis e função de salvar.
+ * CUIDADO: preserve rastreabilidade como os_number, created_by, operator_name e created_at.
+ */
+
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import {
@@ -89,6 +96,7 @@ export default function EditarOS() {
     });
   }
 
+  // Busca os dados da OS atual no Supabase.
   async function carregarOS() {
     const { data, error } = await supabase
       .from("service_orders")

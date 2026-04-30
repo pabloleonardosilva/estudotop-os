@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * ARQUIVO: Modal global
+ * OBJETIVO: avisos, confirmações e erros com visual premium.
+ * ONDE MEXER: visual por tipo e textos padrão.
+ * CUIDADO: usado por várias páginas.
+ */
+
 export default function SystemModal({
   open,
   title,

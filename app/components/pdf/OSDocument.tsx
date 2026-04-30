@@ -1,3 +1,10 @@
+/**
+ * ARQUIVO: Layout do PDF da OS
+ * OBJETIVO: define PDF usado no download e no anexo do e-mail.
+ * ONDE MEXER: campos, estilos, margens e rodapé.
+ * CUIDADO: usa @react-pdf/renderer; não é HTML/Tailwind comum.
+ */
+
 import {
   Document,
   Page,
@@ -6,6 +13,7 @@ import {
   StyleSheet,
 } from "@react-pdf/renderer";
 
+// Componente central do PDF. Alterações aqui impactam download e anexo do e-mail.
 export default function OSDocument({ os }: any) {
   const professor = os.teachers?.name || os.professor_name || "-";
   const disciplina = os.subjects?.name || os.subject_name || "-";

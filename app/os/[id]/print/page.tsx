@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * ARQUIVO: Impressão da OS
+ * OBJETIVO: versão A4 para imprimir pelo navegador.
+ * ONDE MEXER: layout A4, campos exibidos, rodapé e assinaturas.
+ * CUIDADO: classes print/no-print controlam impressão.
+ */
+
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
@@ -12,6 +19,7 @@ export default function PrintOS() {
     carregarOS();
   }, []);
 
+  // Busca os dados da OS atual no Supabase.
   async function carregarOS() {
     const { data, error } = await supabase
       .from("service_orders")

@@ -1,3 +1,10 @@
+/**
+ * ARQUIVO: API de envio/reenvio de e-mail
+ * OBJETIVO: busca OS, gera PDF, envia e-mail pelo Resend e atualiza status.
+ * ONDE MEXER: remetente/destinatário, HTML do e-mail, PDF, logs e erros.
+ * CUIDADO: usa variáveis de ambiente e deve continuar server-side.
+ */
+
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import React from "react";
@@ -257,6 +264,7 @@ async function enviarEmailComPdf(osCompleta: any, pdfBuffer: Buffer) {
   }
 }
 
+// Endpoint chamado pelo frontend para executar uma ação segura no servidor.
 export async function POST(req: Request) {
   let osId: string | null = null;
 

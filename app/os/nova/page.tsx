@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * ARQUIVO: Nova Ordem de Serviço
+ * OBJETIVO: cria OS, valida campos obrigatórios, registra professor/disciplina e dispara e-mail automático.
+ * ONDE MEXER: formulário, validarCamposObrigatorios(), confirmarCriarOS() e chamada /api/os/send-email.
+ * CUIDADO: operadores precisam dos campos essenciais; administradores podem criar OS incompleta.
+ */
+
 import { useEffect, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
@@ -89,6 +96,7 @@ export default function NovaOS() {
     });
   }
 
+  // Busca dados auxiliares no Supabase para popular selects e telas.
   async function carregarDados() {
     const { data: teachersData } = await supabase
       .from("teachers")
@@ -155,6 +163,7 @@ export default function NovaOS() {
     return `${baseClass} border-red-300 bg-red-50/60 text-red-900 focus:border-red-400 focus:ring-red-100`;
   }
 
+  // Valida campos essenciais antes de criar a OS.
   function validarCamposObrigatorios() {
     if (isAdmin()) {
       setFieldErrors([]);

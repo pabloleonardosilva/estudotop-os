@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * ARQUIVO: Usuários
+ * OBJETIVO: admin cria/lista usuários e papéis.
+ * ONDE MEXER: formulário e chamada /api/users/create.
+ * CUIDADO: criação passa por API server-side.
+ */
+
 import { useEffect, useState } from "react";
 import { Edit3, Plus, Save, Search, ShieldCheck, UserPlus } from "lucide-react";
 import { supabase } from "../../lib/supabase";

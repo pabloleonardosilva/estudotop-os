@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * ARQUIVO: Visualização/Download do PDF
+ * OBJETIVO: busca uma OS e renderiza OSDocument para download.
+ * ONDE MEXER: query da OS e dados enviados para o PDF.
+ * CUIDADO: layout do PDF fica em app/components/pdf/OSDocument.tsx.
+ */
+
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import {
@@ -16,6 +23,7 @@ export default function GerarPDF() {
     carregarOS();
   }, []);
 
+  // Busca os dados da OS atual no Supabase.
   async function carregarOS() {
     const { data, error } = await supabase
       .from("service_orders")

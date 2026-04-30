@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * ARQUIVO: Contexto de autenticação
+ * OBJETIVO: centraliza usuário, perfil, loading, login e logout.
+ * ONDE MEXER: busca de profile, login/logout e estados globais.
+ * CUIDADO: alteração aqui afeta permissões no sistema inteiro.
+ */
+
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 

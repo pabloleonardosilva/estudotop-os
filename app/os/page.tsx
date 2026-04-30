@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * ARQUIVO: Listagem / consulta de OS
+ * OBJETIVO: lista OS, aplica filtros, mostra resumo e ações.
+ * ONDE MEXER: buscarOS(), filtros, colunas da tabela e cards/resumos.
+ * CUIDADO: tabela principal é service_orders; relacionamentos com teachers/subjects exibem nomes.
+ */
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
@@ -97,6 +104,7 @@ export default function ConsultarOS() {
     });
   }
 
+  // Monta a consulta no Supabase, aplica filtros e atualiza a lista.
   async function buscarOS() {
     setLoadingList(true);
 
